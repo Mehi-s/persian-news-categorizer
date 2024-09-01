@@ -1,28 +1,29 @@
 import pandas as pd
-import numpy as np
 import hazm
-from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline, FunctionTransformer
 import xgboost as xgb
+from concurrent.futures import ThreadPoolExecutor
+import pickle
 
-# Custom transformer for text preprocessing
-class PersianTextPreprocessor(BaseEstimator, TransformerMixin):
-    def __init__(self):
-        self.stemmer = hazm.Stemmer()
-        self.stopwords = hazm.stopwords_list()
+# Function for text preprocessing
+def persian_text_preprocessor(text):
+    stemmer = hazm.Stemmer()
+    stopwords = set(hazm.stopwords_list())
+    words = text.split(' ')
+    words = [stemmer.stem(word) for word in words if word not in stopwords]
+    return ' '.join(words)
 
-    def fit(self, X, y=None):
-        return self
+# Multithreaded processing function
+def preprocess_multithreaded(text_series, max_workers=4):
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        processed_texts = list(executor.map(persian_text_preprocessor, text_series))
+    return processed_texts
 
-    def transform(self, X, y=None):
-        return X.apply(self._process)
-
-    def _process(self, text):
-        words = text.split(' ')
-        words = [self.stemmer.stem(word) for word in words if word not in self.stopwords]
-        return ' '.join(words)
+# Named function for use in the pipeline
+def apply_preprocessing(x):
+    return preprocess_multithreaded(x)
 
 # Load data
 df = pd.read_csv('persian_news/train.csv', delimiter='\t')
@@ -33,7 +34,7 @@ y = df['label_id']
 
 # Define the pipeline
 pipeline = Pipeline([
-    ('preprocessor', PersianTextPreprocessor()),  # Custom text preprocessing
+    ('preprocessor', FunctionTransformer(apply_preprocessing)),  # Use the named function here
     ('vectorizer', TfidfVectorizer()),  # TF-IDF vectorization
     ('classifier', xgb.XGBClassifier(n_estimators=300, random_state=12))  # XGBoost classifier
 ])
@@ -43,9 +44,3 @@ x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 # Train the model
 pipeline.fit(x_train, y_train)
-
-import pickle
-
-# Save the pipeline to a file
-with open('text_classification_pipeline.pkl', 'wb') as file:
-    pickle.dump(pipeline, file)
