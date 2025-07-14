@@ -25,8 +25,12 @@ def preprocess_multithreaded(text_series, max_workers=4):
 def apply_preprocessing(x):
     return preprocess_multithreaded(x)
 
-# Load data
-df = pd.read_csv('persian_news/train.csv', delimiter='\t')
+import zipfile
+
+# Load data from zip file
+with zipfile.ZipFile('persian_news.zip') as z:
+    with z.open('persian_news/train.csv') as f:
+        df = pd.read_csv(f, delimiter='\t')
 
 # Extract features and labels
 X = df['content']
@@ -42,5 +46,13 @@ pipeline = Pipeline([
 # Split the data
 x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=12)
 
+from sklearn.metrics import classification_report
+
 # Train the model
 pipeline.fit(x_train, y_train)
+
+# Predict on the test set
+y_pred = pipeline.predict(x_test)
+
+# Print the classification report
+print(classification_report(y_test, y_pred))
